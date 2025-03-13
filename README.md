@@ -83,7 +83,7 @@ In order to find the parameter values that best fit your data, we integrated a p
 step to our program. The optimization process tests different parameter combinations on DBH 
 (diameter at breast height) accuracy by comparing LiDAR-derived to field-measured values.
 
-If you simply wish to test the program, download the available [testing files](https://figshare.com/s/862e8b26394405f80b12)
+If you simply wish to test the program, download the available [testing files](https://doi.org/10.6084/m9.figshare.28514189)
 and skip the referential data preparation.
 
 1. Prepare the __referential data__:
