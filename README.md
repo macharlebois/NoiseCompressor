@@ -1,5 +1,5 @@
 # A novel approach for distinguishing noise and information in forest MLS-point clouds
-## Description
+# Description
 3D-laser scanning is a cornerstone of modern forestry and ecological research, 
 enabling detailed insights into forest structures and dynamics. Although point 
 cloud processing and noise management are crucial steps in the exploitation of 
@@ -20,7 +20,7 @@ essential structural details.
 More information about this method can be found in the following paper:
 _Available soon_
 
-## General workflow
+# General workflow
 <p align="center">
 <img src="infographics/general_workflow.png" width="800">
 </p>
@@ -39,7 +39,7 @@ of the point cloud.
 <img src="infographics/DBH_estimation.png" width="350">
 </p>
 
-## Installation
+# Installation
 
 ### 1️⃣ Create a Virtual Environment
 To ensure a clean and isolated environment for dependencies, create a virtual environment. 
@@ -96,13 +96,13 @@ pytest
 * [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 * [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 
-## How to use
+# How to use
 As you can see with the [general workflow](#general-workflow), this method is divided into three main steps.
 However, the __skeletonization__ step is integrated into the __parameterization__ and __compression__ steps, 
 so it is not presented as a distinct running script in the following.
 
 
-### ▶️ STEP 1 : PARAMETERIZATION
+## ▶️ STEP 1 : PARAMETERIZATION
 In order to find the parameter values that best fit your data, we integrated a parameterization
 step to our program. The optimization process tests different parameter combinations on DBH 
 (diameter at breast height) accuracy by comparing LiDAR-derived to field-measured values.
@@ -157,7 +157,7 @@ and skip the referential data preparation.
      - the optimization graphs comparing the untreated and compressed stems (`optimized_graph_results.png`)
 
 
-### ▶️ STEP 2 : COMPRESSION
+## ▶️ STEP 2 : COMPRESSION
 Now that you have optimized your parameters and threshold values, you can compress your point cloud.
 
 💡 If you simply wish to try the program, use the grouped referential stem file (`ref_stems.ply`) created 
