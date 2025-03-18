@@ -182,9 +182,9 @@ def validate_data(data, usage, threshold=None):
             data = data.reset_index(drop=False)
             data.rename(columns={"index": "line_id"}, inplace=True)
             data["line_id"] = data["line_id"].astype("int64")
-        dataxyz = data[["line_id", "X", "Y", "Z", "relative_z"]]
+        data_xyz = data[["line_id", "X", "Y", "Z", "relative_z"]]
 
-        return data, dataxyz
+        return data, data_xyz
 
     elif usage == "point_indexation":
         if threshold == "Fraternity index":

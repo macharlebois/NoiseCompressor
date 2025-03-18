@@ -5,7 +5,7 @@ environment you are running this script in:
 numpy (1.24.2), pandas (1.5.3), plyfile (0.7.4)
 
 This file can be imported as a module and contains the following functions:
-* df2array - converts a pandas DataFrame to a numpy structured array
+* pd2array - converts a pandas DataFrame to a numpy structured array
 * write_csv - writes a pandas or dask DataFrame to a .csv file
 * write_ply - writes a pandas or dask DataFrame to a .ply file
 * write_xlsx - writes a pandas or dask DataFrame to a .xlsx file
