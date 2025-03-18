@@ -96,7 +96,7 @@ pytest
 * [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 * [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 
-
+    <br>
 # How to use
 As you can see with the [general workflow](#general-workflow), this method is divided into three main steps.
 However, the __skeletonization__ step is integrated into the __parameterization__ and __compression__ steps, 
@@ -145,7 +145,7 @@ and skip the referential data preparation.
      - if generating a new skeleton, you will be asked to set the skeletonization parameters 
      (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
 
-        <br>
+
 #### 💾 __OUTPUT FILES__  
 When the parameterization is completed, the script will output the following files:
 - a grouped referential stem file (`ref_stems.ply`)
@@ -156,7 +156,7 @@ When the parameterization is completed, the script will output the following fil
   - the optimized parameters and threshold values (`optimized_param.csv`)
   - the optimization graphs comparing the untreated and compressed stems (`optimized_graph_results.png`)
 
-
+    <br>
 ## ▶️ STEP 2 : COMPRESSION
 Now that you have optimized your parameters and threshold values, you can compress your point cloud.
 
@@ -181,7 +181,7 @@ during previous step as the point cloud to compress.
       (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
    - set the compression parameters (`m1`, `m2`, `b` and `threshold` from the optimization results `optimized_param.csv`).
    
-        <br>
+
 #### 💾 __OUTPUT FILES__ 
 When the compression is completed, the script will output the following files:
 - a skeleton file (`pointcloud_skeleton.csv`)
