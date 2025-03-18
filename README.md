@@ -41,34 +41,58 @@ of the point cloud.
 
 ## Installation
 
-1. Create a Virtual Environment:
-
-   To ensure a clean and isolated environment for dependencies, create a virtual environment. 
+### 1️⃣ Create a Virtual Environment
+To ensure a clean and isolated environment for dependencies, create a virtual environment. 
    
-   Here's an example using [ANACONDA](https://www.anaconda.com/). Run the following command, 
-   replacing `"myenv"` with your desired environment name:
+#### Using [Anaconda](https://www.anaconda.com/):
+1. Open the **Anaconda Prompt** (_Windows_) or a terminal (_Mac/Linux_).
+2. Run the following command, replacing `"myenv"` with your preferred environment name:
+   ```bash
+   conda create --name myenv python=3.9
+   ```
+3. Activate the environment:
+   ```bash
+   conda activate myenv
+   ```
    
-   1. Open the _Anaconda Prompt_ (on _Windows_) or a terminal (on _Mac/Linux_) and create a new environment:
-      ```bash
-      conda create --name myenv python=3.9
-      ```
-   2. Activate the environment:
-      ```bash
-      conda activate myenv
-      ```
+#### Alternatively, using [`venv`](https://docs.python.org/3/library/venv.html) (if you don't use Anaconda):
+1. Run the following command, replacing `"myenv"` with your preferred environment name:
+   ```bash
+   python -m venv myenv
+   ```
+2. Activate the environment:
+   * **Windows**:
+     ```bash
+     myenv\Scripts\activate
+     ```
+   * **Mac/Linux**:
+     ```bash
+     source myenv/bin/activate
+     ```
 
-2. Clone the repository:
 
-    ```bash
-    git clone https://github.com/macharlebois/NoiseCompressor.git
-    ```
-3. Install the required dependencies:
+### 2️⃣ Clone the Repository
+Ensure `git` is installed, then run:
+```bash
+git clone https://github.com/macharlebois/NoiseCompressor.git
+cd NoiseCompressor
+```
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 3️⃣ Install Dependencies
+With the virtual environment activated, install the required dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-Alternatively, executable files are available for download _(Windows version only)_:
+### 4️⃣ Run Tests
+To ensure everything is working properly:
+```bash
+pytest
+```
+
+### ✅ Ready to Use!
+
+🔎 Alternatively, executable files are available for download _(Windows version only)_:
 * [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 * [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
 
@@ -78,12 +102,12 @@ However, the __skeletonization__ step is integrated into the __parameterization_
 so it is not presented as a distinct running script in the following.
 
 ---
-### _STEP 1 : PARAMETERIZATION_
+### ▶️ _STEP 1 : PARAMETERIZATION_
 In order to find the parameter values that best fit your data, we integrated a parameterization
 step to our program. The optimization process tests different parameter combinations on DBH 
 (diameter at breast height) accuracy by comparing LiDAR-derived to field-measured values.
 
-If you simply wish to test the program, download the available [testing files](https://doi.org/10.6084/m9.figshare.28514189)
+💡 If you simply wish to try the program, download the available [try-out files](https://doi.org/10.6084/m9.figshare.28514189)
 and skip the referential data preparation.
 
 1. Prepare the __referential data__:
@@ -100,7 +124,7 @@ and skip the referential data preparation.
    - `param_limits.xlsx` (user's parameters and threshold limits, download template [here](example_files/param_limits.xlsx))
    - `stem_information.xlsx` (individual stems information and ground-truth data, download template [here](example_files/stem_information.xlsx))
 
-   ___Note that input files and folder must be named exactly as shown below (in blue).___ 
+   ⚠️ _Note that input files and folder (in blue) must be named and organized as shown below._
 
    <img src="infographics/input_files_setup.png" width="650">
 
@@ -122,7 +146,7 @@ and skip the referential data preparation.
      (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
    
      <br>
-   ___OUTPUT FILES___  
+   💾 ___OUTPUT FILES___  
    When the parameterization is completed, the script will output the following files:
    - a grouped referential stem file (`ref_stems.ply`)
    - a skeleton file (`ref_stems_skeleton.csv`)
@@ -133,11 +157,11 @@ and skip the referential data preparation.
      - the optimization graphs comparing the untreated and compressed stems (`optimized_graph_results.png`)
 
 ---
-### _STEP 2 : COMPRESSION_
+### ▶️ _STEP 2 : COMPRESSION_
 Now that you have optimized your parameters and threshold values, you can compress your point cloud.
 
-If you simply wish to test the program, use the grouped referential stem file (`ref_stems.ply`) created 
-during parameterization as the point cloud to compress.
+💡 If you simply wish to try the program, use the grouped referential stem file (`ref_stems.ply`) created 
+during previous step as the point cloud to compress.
 
 1. Run the __step2_COMPRESSOR__ script:
     
@@ -158,7 +182,7 @@ during parameterization as the point cloud to compress.
    - set the compression parameters (`m1`, `m2`, `b` and `threshold` from the optimization results `optimized_param.csv`).
    
      <br>
-   ___OUTPUT FILES___  
+   💾 ___OUTPUT FILES___  
    When the compression is completed, the script will output the following files:
    - a skeleton file (`pointcloud_skeleton.csv`)
    - your compressed point cloud (`pointcloud_compressed.ply`)
