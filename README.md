@@ -101,8 +101,8 @@ As you can see with the [general workflow](#general-workflow), this method is di
 However, the __skeletonization__ step is integrated into the __parameterization__ and __compression__ steps, 
 so it is not presented as a distinct running script in the following.
 
----
-### ▶️ _STEP 1 : PARAMETERIZATION_
+
+### ▶️ STEP 1 : PARAMETERIZATION
 In order to find the parameter values that best fit your data, we integrated a parameterization
 step to our program. The optimization process tests different parameter combinations on DBH 
 (diameter at breast height) accuracy by comparing LiDAR-derived to field-measured values.
@@ -146,7 +146,7 @@ and skip the referential data preparation.
      (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
    
      <br>
-   💾 ___OUTPUT FILES___  
+   💾 __OUTPUT FILES__  
    When the parameterization is completed, the script will output the following files:
    - a grouped referential stem file (`ref_stems.ply`)
    - a skeleton file (`ref_stems_skeleton.csv`)
@@ -156,8 +156,8 @@ and skip the referential data preparation.
      - the optimized parameters and threshold values (`optimized_param.csv`)
      - the optimization graphs comparing the untreated and compressed stems (`optimized_graph_results.png`)
 
----
-### ▶️ _STEP 2 : COMPRESSION_
+
+### ▶️ STEP 2 : COMPRESSION
 Now that you have optimized your parameters and threshold values, you can compress your point cloud.
 
 💡 If you simply wish to try the program, use the grouped referential stem file (`ref_stems.ply`) created 
@@ -182,7 +182,7 @@ during previous step as the point cloud to compress.
    - set the compression parameters (`m1`, `m2`, `b` and `threshold` from the optimization results `optimized_param.csv`).
    
      <br>
-   💾 ___OUTPUT FILES___  
+   💾 __OUTPUT FILES__  
    When the compression is completed, the script will output the following files:
    - a skeleton file (`pointcloud_skeleton.csv`)
    - your compressed point cloud (`pointcloud_compressed.ply`)
