@@ -145,8 +145,8 @@ and skip the referential data preparation.
      - if generating a new skeleton, you will be asked to set the skeletonization parameters 
      (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
 
-
-#### 💾 __OUTPUT FILES__  
+    <br>
+### 💾 __OUTPUT FILES__  
 When the parameterization is completed, the script will output the following files:
 - a grouped referential stem file (`ref_stems.ply`)
 - a skeleton file (`ref_stems_skeleton.csv`)
@@ -181,8 +181,8 @@ during previous step as the point cloud to compress.
       (`voxel_size`, `search_radius` and `max_relocation_dist`) or use _default values_.
    - set the compression parameters (`m1`, `m2`, `b` and `threshold` from the optimization results `optimized_param.csv`).
    
-
-#### 💾 __OUTPUT FILES__ 
+    <br>
+### 💾 __OUTPUT FILES__ 
 When the compression is completed, the script will output the following files:
 - a skeleton file (`pointcloud_skeleton.csv`)
 - your compressed point cloud (`pointcloud_compressed.ply`)
