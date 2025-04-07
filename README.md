@@ -93,8 +93,8 @@ pytest
 ### ✅ Ready to Use!
 
 🔎 Alternatively, executable files are available for download _(Windows version only)_:
-* [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
-* [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/LMS_Compressor/releases)
+* [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/NoiseCompressor/releases)
+* [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/NoiseCompressor/releases)
 
     <br>
 # How to use
