@@ -92,7 +92,7 @@ def compress_cloud(cloud, skeleton, param, threshold):
             cloud3["relocation_dist"],
         )
         # Retain only points below the SI_threshold
-        cloud3 = cloud3[cloud3["relocation_dist"] <= param["SI_threshold"]]
+        cloud3 = cloud3[cloud3["r"] <= param["SI_threshold"]]
     else:
         mask = cloud3["1st_neighbor_dist"] > param["FI_threshold"]
         cloud3.loc[mask, "relocation_dist"] = cloud3.loc[mask, "r"]
