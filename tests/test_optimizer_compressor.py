@@ -25,14 +25,14 @@ def sample_data():
 
     stem_info = pd.DataFrame({"stem_id": [10001], "true_dbh": [0.01]})
 
-    ref_file = "https://github.com/macharlebois/Sample_Data/raw/refs/heads/main/ref4testing.ply"
+    ref_file = "https://github.com/macharlebois/Sample_Data/raw/refs/heads/main/noise_compressor/pytest/ref4testing.ply"
     with urllib.request.urlopen(ref_file) as response:
         ply_data = PlyData.read(io.BytesIO(response.read()))
     vertex_data = ply_data["vertex"].data
     ref_data = pd.DataFrame(vertex_data)
     ref_data["stem_id"] = ref_data["stem_id"].astype(int)
 
-    skeleton_file = "https://github.com/macharlebois/Sample_Data/raw/refs/heads/main/skl4testing.csv"
+    skeleton_file = "https://github.com/macharlebois/Sample_Data/raw/refs/heads/main/noise_compressor/pytest/skl4testing.csv"
     skeleton_data = pd.read_csv(skeleton_file)
 
     return stem_info, ref_data, skeleton_data, param_limits, threshold
@@ -47,6 +47,6 @@ def test_main_optimizer(sample_data):
     assert {"stem_id", "estimated_dbh", "rel_dbh_diff", "true_dbh", "dbh_diff", "individual"}.issubset(relation_tab.columns)
     assert not param_tab.empty
     assert round(result["m1"].values[0], 3) == 0.000
-    assert round(result["m2"].values[0], 3) == -0.440
+    assert round(result["m2"].values[0], 3) == 0.98
     assert round(result["b"].values[0], 3) == 0.000
-    assert round(result["SI_threshold"].values[0], 3) == 0.179
+    assert round(result["SI_threshold"].values[0], 3) == 0.306
