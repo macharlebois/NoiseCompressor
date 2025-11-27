@@ -40,11 +40,12 @@ import multiprocessing
 import numpy as np
 import os
 import pandas as pd
+import polars as pl
 from pointcloud.utility import (
     error_message,
     search_file,
     select_threshold,
-    set_parameters,
+    colored,
 )
 from pointcloud import (
     writer as writer,
@@ -105,7 +106,7 @@ def evaluate_individual(
     return (dbh_error_sum,)
 
 
-def estimate_dbh(data, iterations=20, dbh_height=1.20):
+def estimate_dbh(data, stem_id, iterations=20, dbh_height=1.20):
     """Estimates the observed width of a stem, as a proxy for its DBH.
     Parameters:
         data (DataFrame): The data of the stem.
@@ -148,9 +149,17 @@ def estimate_dbh(data, iterations=20, dbh_height=1.20):
         # between 1.20 and 1.50 meters from the ground.
         dbh_height += 0.015
 
-    mean_X = np.round(data2["X_diff"].mean(), 3)
-    mean_Y = np.round(data2["Y_diff"].mean(), 3)
-    mean_dbh = np.round((mean_X + mean_Y) / 2, 3)
+    try:
+        mean_X = np.round(data2["X_diff"].mean(), 3)
+        mean_Y = np.round(data2["Y_diff"].mean(), 3)
+        mean_dbh = np.round((mean_X + mean_Y) / 2, 3)
+
+    except ValueError:
+        print(f"ERROR WARNING: DBH estimation failed for stem '{stem_id}' "
+              f"due to invalid data (NO POINTS FOUND AT DBH HEIGHT)")
+        mean_X = 0
+        mean_Y = 0
+        mean_dbh = 0
 
     return mean_X, mean_Y, mean_dbh
 
@@ -166,7 +175,10 @@ def function2optimize(ref_data, skeleton_data, true_dbh, param, threshold):
     Returns:
         tuple: A tuple containing the dbh error sum and the dbh error table of the individual.
     """
+    if isinstance(ref_data, pd.DataFrame):
+        ref_data = pl.from_pandas(ref_data)
     result = Compressor.compress_cloud(ref_data, skeleton_data, param, threshold)
+    result = result.to_pandas()
     dbh_error_tab = pd.DataFrame(
         columns=["stem_id", "estimated_dbh", "rel_dbh_diff", "true_dbh", "dbh_diff"]
     )
@@ -176,10 +188,10 @@ def function2optimize(ref_data, skeleton_data, true_dbh, param, threshold):
         stem_id = row["stem_id"].astype(int)
         subset = ["X", "Y", "Z"]  # Columns to keep
         stem_xyz = result.loc[result["stem_id"] == stem_id, subset]
-        mean_X, mean_Y, mean_dbh = estimate_dbh(stem_xyz)
+        mean_X, mean_Y, mean_dbh = estimate_dbh(stem_xyz, stem_id, dbh_height=1.20)
 
         # Calculating the difference between the estimated and field-measured dbh
-        dbh_diff = mean_dbh - row["true_dbh"]
+        dbh_diff = abs(mean_dbh - row["true_dbh"])
         rel_dbh_diff = abs((mean_dbh - row["true_dbh"]) / row["true_dbh"])
 
         new_row = pd.DataFrame(
@@ -207,12 +219,10 @@ def function2optimize(ref_data, skeleton_data, true_dbh, param, threshold):
         return 99, dbh_error_tab
 
     else:
-        # Fitness calculation to be optimized using the normalized sum and standard deviation
-        # of the relative difference between the estimated and true dbh:
-        # Σ[((|true_dbh-estimated_dbh|/true_dbh)/n) + σ], where n is the number of stems
-        dbh_error_sum = (
-            dbh_error_tab["rel_dbh_diff"].sum() / len(dbh_error_tab["rel_dbh_diff"])
-        ) + dbh_error_tab["rel_dbh_diff"].std()
+        # Fitness equation to optimize based on the relative difference between the
+        # estimated and true dbh: Σ (([true_dbh - estimated_dbh] / true_dbh)^2)
+        dbh_error_sum = ((1 / (dbh_error_tab["true_dbh"])) * (
+                dbh_error_tab["true_dbh"] - dbh_error_tab["estimated_dbh"]) ** 2).sum()
         return dbh_error_sum, dbh_error_tab
 
 
@@ -336,19 +346,19 @@ if __name__ == "__main__":
     # 1-SELECT THRESHOLD
     threshold = select_threshold(utilisation="optimizer")
     if threshold is None:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
 
     # 2-CHOOSE WORKING DIRECTORY
     work_directory = easygui.diropenbox(
         title="WORKING DIRECTORY",
         msg="Select working directory containing input files "
-        "(stem_information.xlsx - param_limits.xlsx - individual_stem_files)",
+        "(stem_information.xlsx - individual_stem_files)",
     )
     if work_directory is None:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     os.chdir(work_directory)
     try:
@@ -370,8 +380,8 @@ if __name__ == "__main__":
     # Generate a reference file (or use an existing one)
     generate_reference_file = search_file("optimization")
     if generate_reference_file is None:
-        print("##############################################")
-        print("Process canceled by user. Please try again.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     if generate_reference_file == "No":
         ref_file = easygui.fileopenbox(
@@ -382,57 +392,20 @@ if __name__ == "__main__":
     # Generate a skeleton (or use an existing one)
     generate_skeleton = search_file("skeleton")
     if generate_skeleton is None:
-        print("##############################################")
-        print("Process canceled by user. Please try again.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     elif generate_skeleton == "Yes":
-        param_sk = dict()
-        try:
-            (
-                param_sk["voxel_size"],
-                param_sk["search_radius"],
-                param_sk["max_relocation_dist"],
-            ) = set_parameters(usage="skeleton")
-            print("##############################################")
-            print("The skeleton parameters have been defined as :")
-            print("voxel_size =", param_sk["voxel_size"])
-            print("search_radius =", param_sk["search_radius"])
-            print("max_relocation_dist =", param_sk["max_relocation_dist"])
-        except ValueError:
-            print("##############################################")
-            print(
-                "The skeletonization process could not be completed"
-                "without the required parameters."
-            )
-            print("Please try again.")
-            exit()
+        param_sk = {
+            "voxel_size": 0.01,
+            "search_radius": 0.1,
+            "max_relocation_dist": 0.21,
+        }
     else:
         skeleton_file = easygui.fileopenbox(
             title="SKELETON FILE", msg="Select the skeleton *.csv file for optimization"
         )
 
-    # Optimization parameters
-    try:
-        param_limits = reader.read_xlsx("param_limits.xlsx", sheet_name="param_limits")
-    except FileNotFoundError:
-        print("##############################################")
-        print("The param_limits.xlsx file could not be found.")
-        exit()
-    if threshold == "Skeleton index":
-        param_limits = param_limits[
-            param_limits["Parameter"].isin(["m1", "m2", "b", "SI_threshold"])
-        ]
-    else:
-        param_limits = param_limits[
-            param_limits["Parameter"].isin(["m1", "m2", "b", "FI_threshold"])
-        ]
-    param_limits = valid.validate_data(
-        param_limits, usage="optimizer", threshold=threshold
-    )
-    if param_limits is None:
-        print("##############################################")
-        print("Process canceled due to missing or invalid data in param_limits.xlsx.")
-        exit()
 
     # Creating the output folder (if non-existent)
     if threshold == "Skeleton index":
@@ -444,11 +417,14 @@ if __name__ == "__main__":
 
     # 3-GENERATE REFERENCE FILE (from single stem files)
     if generate_reference_file == "No":  # verifies if the file exists
+        print(" ")
+        print(colored("Reading reference cloud..."))
         ref_data = reader.read_ply(ref_file)
+        print("Reference cloud successfully loaded.")
         ref_data = valid.validate_columns(ref_data, threshold)
         if ref_data is None:
-            print("##############################################")
-            print("Process canceled by user.")
+            print(" ")
+            print(colored("Process canceled by user...", 'red'))
             exit()
     elif generate_reference_file == "Yes":
         dfs = []
@@ -489,8 +465,8 @@ if __name__ == "__main__":
                 exit()
             stem_data = valid.validate_columns(stem_data, threshold)
             if stem_data is None:
-                print("##############################################")
-                print("Process canceled by user.")
+                print(" ")
+                print(colored("Process canceled by user...", 'red'))
                 exit()
             stem_data = valid.validate_data(stem_data, "point_indexation", threshold)
             if "stem_id" not in stem_data.columns:
@@ -498,9 +474,9 @@ if __name__ == "__main__":
             if threshold == "Skeleton index":
                 dfs.append(stem_data)
             else:
-                print("##############################################")
-                print("Processing individual stem files...")
-                print("This may take a few minutes. Please wait.")
+                print("")
+                print(colored("Processing individual stem files..."))
+                print("This may take a moment. Please wait.")
                 print("Current: " + row["ind_stem_file"] + " (%s of %s)" % (i, n))
                 # Fraternity index calculation
                 stem_data2 = fraternity_indexer.arc_separator(stem_data)
@@ -510,14 +486,14 @@ if __name__ == "__main__":
                 i = i + 1
         ref_data = pd.concat(dfs, ignore_index=True)
         writer.write_ply(ref_file, ref_data)
-        print("##############################################")
+        print(" ")
         print(
             "Stem identification successfully completed with the %s threshold."
             % threshold
         )
     else:
-        print("##############################################")
-        print("Process canceled by user. Please try again.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
 
     # Saving untreated results
@@ -525,8 +501,8 @@ if __name__ == "__main__":
     for index, row in stem_info.iterrows():
         stem_id = row["stem_id"]
         subset = ["X", "Y", "Z"]
-        xyz_tige = ref_data.loc[ref_data["stem_id"] == stem_id, subset]
-        mean_X, mean_Y, mean_dbh = estimate_dbh(xyz_tige)
+        stem_xyz = ref_data.loc[ref_data["stem_id"] == stem_id, subset]
+        mean_X, mean_Y, mean_dbh = estimate_dbh(stem_xyz, stem_id, dbh_height=1.20)
         dbh_diff = mean_dbh - row["true_dbh"]
         new_row = pd.DataFrame(
             {
@@ -545,13 +521,16 @@ if __name__ == "__main__":
         data, ref_data = valid.validate_data(ref_data, "skeleton")
     elif generate_skeleton == "Yes":
         data, ref_data = valid.validate_data(ref_data, "skeleton")
-        print("##############################################")
-        print("Generating skeleton...")
-        print("This may take a few minutes. Please wait.")
-        skeleton = skeletonizer.generate_skeleton(ref_data, param_sk)
         print(" ")
-        print("Skeletonization completed successfully.")
-        print("Optimization of compression parameters...")
+        print(colored("Generating skeleton..."))
+        print("This may take a moment. Please wait.")
+        ref_data = pl.from_pandas(ref_data)
+        skeleton = skeletonizer.generate_skeleton(ref_data, param_sk)
+        ref_data = ref_data.to_pandas()
+        skeleton = skeleton.to_pandas()
+        print(" ")
+        print("Skeletonization completed " + colored("successfully", "C14") + ".")
+        print("Beginning the compression parameters optimization...")
 
         # ADD missing columns to the skeleton file
         cols_to_add = [col for col in data.columns if col not in skeleton.columns or col == "line_id"]
@@ -559,8 +538,8 @@ if __name__ == "__main__":
         skeleton_data["stem_id"] = skeleton_data["stem_id"].astype(int)
         writer.write_csv(skeleton_file, skeleton_data)
     else:
-        print("##############################################")
-        print("Process canceled by user. Please try again.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
 
     # Add missing columns to the ref_data file
@@ -583,6 +562,17 @@ if __name__ == "__main__":
     skeleton_data = skeleton_data[skeleton_data["line_id"].isin(ref_data["line_id"])]
 
     # 5-PARAMETRIZATION BY OPTIMIZATION
+    param_limits = pd.DataFrame(columns=["Parameter", "Min", "Max", "Step"])
+    if threshold == "Fraternity index":
+        param_limits["Parameter"] = ["m1", "m2", "b", "FI_threshold"]
+        param_limits["Min"] = [0, -1, 0, ref_data["1st_neighbor_dist"].min()]
+        param_limits["Max"] = [0, 1, 0, ref_data.loc[ref_data["1st_neighbor_dist"] < 5, "1st_neighbor_dist"].max()]
+        param_limits["Step"] = [0.01, 0.01, 0.001, 0.001]
+    else:
+        param_limits["Parameter"] = ["m1", "m2", "b", "SI_threshold"]
+        param_limits["Min"] = [0, -1, 0, 0]
+        param_limits["Max"] = [0, 1, 0, 1]
+        param_limits["Step"] = [0.01, 0.01, 0.001, 0.001]
     GA_relation_tab, GA_param_tab = main_optimizer(
         stem_info, ref_data, skeleton_data, param_limits, threshold
     )
@@ -603,8 +593,8 @@ if __name__ == "__main__":
         output_folder, "optimized_param_" + formatted_time + ".xlsx"
     )
     writer.write_xlsx(param_file_path, dataplot_param)
-    print("##############################################")
-    print("Optimization completed successfully.")
+    print(" ")
+    print("Optimization completed " + colored("successfully", "C14") + ".")
     print("Plotting the results...")
 
     # Plotting the results
