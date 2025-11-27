@@ -14,14 +14,15 @@ This file can be imported as a module and contains the following functions:
 * generate_skeleton - generates a skeleton from a point cloud
 * compressor4smalldata - for small dataset (< 50 000 points)
 * compressor4bigdata - for larger dataset (50 000+ points)
+* process_block - process a block of points for big data skeletonization
 """
 
-from datetime import datetime
+import gc
 import numpy as np
-import pandas as pd
-import pointcloud.utility as utility
+import polars as pl
 from scipy.spatial import cKDTree
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 
 def generate_skeleton(cloud, p):
@@ -31,26 +32,26 @@ def generate_skeleton(cloud, p):
 
     Parameters
     ----------
-    cloud : pandas.DataFrame
+    cloud : polars.DataFrame
         Point cloud data
     p : dict
         Dictionary containing the skeleton parameters
 
     Returns
     -------
-    skeleton : pandas.DataFrame
+    skeleton : polars.DataFrame
         Skeleton data
     """
     if cloud.shape[0] < 50000:
         skeleton = compressor4smalldata(
-            cloud.copy(),
+            cloud.clone(),
             voxel_size=p["voxel_size"],
             search_radius=p["search_radius"],
             max_relocation_dist=p["max_relocation_dist"],
         )
     else:
         skeleton = compressor4bigdata(
-            cloud.copy(),
+            cloud.clone(),
             voxel_size=p["voxel_size"],
             search_radius=p["search_radius"],
             max_relocation_dist=p["max_relocation_dist"],
@@ -64,7 +65,7 @@ def compressor4smalldata(data, voxel_size, search_radius, max_relocation_dist):
 
     Parameters
     ----------
-    data : pandas.DataFrame
+    data : polars.DataFrame
         Point cloud data
     voxel_size : float
         Voxel size (in cubic meters) for voxel creation
@@ -75,129 +76,119 @@ def compressor4smalldata(data, voxel_size, search_radius, max_relocation_dist):
 
     Returns
     -------
-    skeleton : pandas.DataFrame
+    skeleton : polars.DataFrame
         Skeleton data
     """
     # Creation of the voxels
-    data["binx"] = np.round(data["X"] / voxel_size) * voxel_size
-    data["biny"] = np.round(data["Y"] / voxel_size) * voxel_size
-    data["binz"] = np.round(data["Z"] / voxel_size) * voxel_size
+    data = data.with_columns([
+        ((pl.col("X") / voxel_size).round() * voxel_size).alias("binx"),
+        ((pl.col("Y") / voxel_size).round() * voxel_size).alias("biny"),
+        ((pl.col("Z") / voxel_size).round() * voxel_size).alias("binz"),
+    ])
     # Identification of the voxels
-    n = 10**3
-    data["VoxelID"] = (
-        (data["binx"] * n).round().astype(int).astype(str)
-        + "_"
-        + (data["biny"] * n).round().astype(int).astype(str)
-        + "_"
-        + (data["binz"] * n).round().astype(int).astype(str)
-    )
+    n = 10 ** 3  # Helps with rounding
+    data = data.with_columns([
+        (
+                (pl.col("binx") * n).round().cast(pl.Int32).cast(pl.Utf8) + "_"
+                + (pl.col("biny") * n).round().cast(pl.Int32).cast(pl.Utf8) + "_"
+                + (pl.col("binz") * n).round().cast(pl.Int32).cast(pl.Utf8)
+        ).alias("VoxelID")
+    ])
 
-    # Calculation of the central and average position of points within each voxel (centroid)
-    voxdata = data.groupby(["VoxelID"]).aggregate(
-        {
-            "binx": "max",
-            "biny": "max",
-            "binz": "max",
-            "X": "mean",
-            "Y": "mean",
-            "Z": "mean",
-            "VoxelID": "size",
-        }
-    )
-    voxdata = voxdata.rename(
-        columns={"VoxelID": "Count", "X": "Xmean", "Y": "Ymean", "Z": "Zmean"}
-    )
-    voxdata.reset_index(inplace=True)
+    #  Calculation of the central and average position of points within each voxel (centroid)
+    voxdata = data.group_by("VoxelID").agg([
+        pl.col("binx").max(),
+        pl.col("biny").max(),
+        pl.col("binz").max(),
+        pl.col("X").mean().alias("Xmean"),
+        pl.col("Y").mean().alias("Ymean"),
+        pl.col("Z").mean().alias("Zmean"),
+        pl.len().alias("Count")
+    ])
 
     # Calculation of the voxel relocation
-    voxdata_xyz = np.array(
-        voxdata[["binx", "biny", "binz"]]
-    )  # Here, XYZ-mean could also be used to define the voxel position
+    voxdata_xyz = voxdata.select(["binx", "biny", "binz"]).to_numpy()
+
     tree = cKDTree(voxdata_xyz)
     indices = tree.query_ball_point(
         voxdata_xyz, r=search_radius, workers=-1, return_sorted=False, p=2
     )
-    voxdata["indices"] = indices
-    voxdata["neighbors_count"] = voxdata["indices"].apply(len)
-    indices_series = pd.Series(voxdata["indices"])
-    count_values = voxdata["Count"].values
-    xyz_values = voxdata[
-        ["binx", "biny", "binz"]
-    ].values  # Here, XYZ-mean could also be used to define the voxel position
-    weighted_mean = np.array(
-        [
-            (xyz_values[indices] * count_values[indices][:, None]).sum(axis=0)
-            / count_values[indices].sum()
-            for indices in indices_series
-        ]
+    voxdata = voxdata.with_columns(indices=indices)
+    voxdata = voxdata.with_columns(
+        pl.col("indices")
+        .map_elements(lambda x: len(x), return_dtype=pl.Int64)
+        .alias("neighbors_count"),
     )
-    weighted_mean_df = pd.DataFrame(
-        weighted_mean, columns=["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"]
-    )
-    voxdata[["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"]] = (
-        weighted_mean_df
+    count_values = voxdata["Count"].to_numpy()
+
+    # Calculation of the weighted mean for each voxel
+    weighted_mean = np.array([
+        (voxdata_xyz[idx] * count_values[idx, None]).sum(axis=0) / count_values[idx].sum()
+        for idx in indices
+    ])
+    weighted_mean_df = pl.DataFrame(weighted_mean, schema=["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"])
+
+    voxdata = voxdata.with_columns([
+        weighted_mean_df["X_weighted_mean"],
+        weighted_mean_df["Y_weighted_mean"],
+        weighted_mean_df["Z_weighted_mean"]
+    ])
+
+    # Relocation calculations
+    voxdata = voxdata.with_columns([
+        (pl.col("X_weighted_mean") - pl.col("binx")).alias("diffx"),
+        (pl.col("Y_weighted_mean") - pl.col("biny")).alias("diffy"),
+        (pl.col("Z_weighted_mean") - pl.col("binz")).alias("diffz"),
+    ])
+    voxdata = voxdata.with_columns(
+        (pl.col("diffx") ** 2 + pl.col("diffy") ** 2 + pl.col("diffz") ** 2).sqrt().alias("relocation_dist")
     )
 
-    voxdata["diffx"], voxdata["diffy"], voxdata["diffz"] = (
-        voxdata["X_weighted_mean"] - voxdata["binx"],
-        voxdata["Y_weighted_mean"] - voxdata["biny"],
-        voxdata["Z_weighted_mean"] - voxdata["binz"],
-    )
-    voxdata["relocation_dist"] = np.sqrt(
-        voxdata["diffx"] ** 2 + voxdata["diffy"] ** 2 + voxdata["diffz"] ** 2
-    )
-    voxdata_prob = voxdata[voxdata["relocation_dist"] > max_relocation_dist].copy()
-    voxdata_prob["polar"] = np.arccos(
-        voxdata_prob["diffz"] / voxdata_prob["relocation_dist"]
-    ) * (180 / np.pi)
-    voxdata_prob["azimuth"] = (
-        np.arctan2(voxdata_prob["diffy"], voxdata_prob["diffx"]) * (180 / np.pi)
-    ) % 360
-    voxdata_prob["diffx"] = (
-        max_relocation_dist
-        * np.sin(np.deg2rad(voxdata_prob["polar"]))
-        * np.cos(np.deg2rad(voxdata_prob["azimuth"]))
-    )
-    voxdata_prob["diffy"] = (
-        max_relocation_dist
-        * np.sin(np.deg2rad(voxdata_prob["polar"]))
-        * np.sin(np.deg2rad(voxdata_prob["azimuth"]))
-    )
-    voxdata_prob["diffz"] = max_relocation_dist * np.cos(
-        np.deg2rad(voxdata_prob["polar"])
-    )
-    cols_to_merge = ["VoxelID", "diffx", "diffy", "diffz"]
-    voxdata = voxdata.merge(
-        voxdata_prob[cols_to_merge], how="left", on="VoxelID", suffixes=("", "_A")
-    )
-    cols_to_update = ["diffx", "diffy", "diffz"]
-    for col in cols_to_update:
-        mask = ~voxdata[
-            col + "_A"
-        ].isnull()  # Mask to select only non-NaN values in '_A' columns
-        voxdata[col] = voxdata[col].mask(mask, voxdata[col + "_A"])
+    # Relocation distance limitation
+    voxdata_prob = voxdata.filter(pl.col("relocation_dist") > max_relocation_dist).with_columns([
+        np.degrees(np.arccos(pl.col("diffz") / pl.col("relocation_dist"))).alias("polar"),
+        (np.degrees(np.arctan2(pl.col("diffy"), pl.col("diffx"))) % 360).alias("azimuth")
+    ]).with_columns([
+        (max_relocation_dist * np.sin(np.radians(pl.col("polar"))) * np.cos(np.radians(pl.col("azimuth")))).alias(
+            "diffx"),
+        (max_relocation_dist * np.sin(np.radians(pl.col("polar"))) * np.sin(np.radians(pl.col("azimuth")))).alias(
+            "diffy"),
+        (max_relocation_dist * np.cos(np.radians(pl.col("polar")))).alias("diffz")
+    ])
 
-    cols_to_merge = ["VoxelID", "diffx", "diffy", "diffz", "Count"]
-    finaltab = data.merge(voxdata[cols_to_merge], how="left", on="VoxelID")
-    finaltab["newx"], finaltab["newy"], finaltab["newz"], finaltab["new_relative_z"] = (
-        finaltab["X"] + finaltab["diffx"],
-        finaltab["Y"] + finaltab["diffy"],
-        finaltab["Z"] + finaltab["diffz"],
-        finaltab["relative_z"] + finaltab["diffz"],
-    )
-    finaltab = finaltab.rename(
-        columns={"X": "oldX", "Y": "oldY", "Z": "oldZ", "relative_z": "old_relative_z"}
-    )
-    finaltab = finaltab.rename(
-        columns={"newx": "X", "newy": "Y", "newz": "Z", "new_relative_z": "relative_z"}
-    )
-    finaltab.drop(
-        ["binx", "biny", "binz", "VoxelID", "diffx", "diffy", "diffz"],
-        axis=1,
-        inplace=True,
+    # Merging recalculated relocation distance
+    voxdata = voxdata.join(
+        voxdata_prob.select(["VoxelID", "diffx", "diffy", "diffz"]),
+        on="VoxelID",
+        how="left",
+        suffix="_A"
     )
 
-    return finaltab
+    for axis in ["x", "y", "z"]:
+        voxdata = voxdata.with_columns([
+            pl.when(pl.col(f"diff{axis}_A").is_not_null())
+            .then(pl.col(f"diff{axis}_A"))
+            .otherwise(pl.col(f"diff{axis}"))
+            .alias(f"diff{axis}")
+        ])
+
+    # Applying relocation to original points
+    finaltab = data.join(
+        voxdata.select(["VoxelID", "diffx", "diffy", "diffz", "Count"]),
+        on="VoxelID",
+        how="left"
+    ).with_columns([
+        (pl.col("X") + pl.col("diffx")).alias("newx"),
+        (pl.col("Y") + pl.col("diffy")).alias("newy"),
+        (pl.col("Z") + pl.col("diffz")).alias("newz"),
+        (pl.col("relative_z") + pl.col("diffz")).alias("new_relative_z")
+    ])
+
+    finaltab = finaltab.rename({
+        "X": "oldX", "Y": "oldY", "Z": "oldZ", "relative_z": "old_relative_z",
+        "newx": "X", "newy": "Y", "newz": "Z", "new_relative_z": "relative_z"
+    })
+    return finaltab.drop(["binx", "biny", "binz", "VoxelID", "diffx", "diffy", "diffz"])
 
 
 def compressor4bigdata(data, voxel_size, search_radius, max_relocation_dist):
@@ -206,7 +197,7 @@ def compressor4bigdata(data, voxel_size, search_radius, max_relocation_dist):
 
     Parameters
     ----------
-    data : pandas.DataFrame
+    data : polars.DataFrame
         Point cloud data
     voxel_size : float
         Voxel size (in cubic meters) for voxel creation
@@ -217,140 +208,129 @@ def compressor4bigdata(data, voxel_size, search_radius, max_relocation_dist):
 
     Returns
     -------
-    skeleton : pandas.DataFrame
+    skeleton : polars.DataFrame
         Skeleton data
     """
     # Creation of the voxels
-    data["binx"] = np.round(data["X"] / voxel_size) * voxel_size
-    data["biny"] = np.round(data["Y"] / voxel_size) * voxel_size
-    data["binz"] = np.round(data["Z"] / voxel_size) * voxel_size
+    data = data.with_columns([
+        ((pl.col("X") / voxel_size).round() * voxel_size).alias("binx"),
+        ((pl.col("Y") / voxel_size).round() * voxel_size).alias("biny"),
+        ((pl.col("Z") / voxel_size).round() * voxel_size).alias("binz"),
+    ])
     # Identification of the voxels
-    n = 10**3  # Helps with rounding
-    data["VoxelID"] = (
-        (data["binx"] * n).round().astype(int).astype(str)
-        + "_"
-        + (data["biny"] * n).round().astype(int).astype(str)
-        + "_"
-        + (data["binz"] * n).round().astype(int).astype(str)
-    )
+    n = 10 ** 3  # Helps with rounding
+    data = data.with_columns([
+        (
+                (pl.col("binx") * n).round().cast(pl.Int32).cast(pl.Utf8) + "_"
+                + (pl.col("biny") * n).round().cast(pl.Int32).cast(pl.Utf8) + "_"
+                + (pl.col("binz") * n).round().cast(pl.Int32).cast(pl.Utf8)
+        ).alias("VoxelID")
+    ])
 
     # Calculation of the central and average position of points within each voxel (centroid)
-    voxdata = data.groupby(["VoxelID"]).aggregate(
-        {
-            "binx": "max",
-            "biny": "max",
-            "binz": "max",
-            "X": "mean",
-            "Y": "mean",
-            "Z": "mean",
-            "VoxelID": "size",
-        }
-    )
-    voxdata = voxdata.rename(
-        columns={"VoxelID": "Count", "X": "Xmean", "Y": "Ymean", "Z": "Zmean"}
-    )
-    voxdata.reset_index(inplace=True)
+    voxdata = data.group_by("VoxelID").agg([
+        pl.col("binx").max(),
+        pl.col("biny").max(),
+        pl.col("binz").max(),
+        pl.col("X").mean().alias("Xmean"),
+        pl.col("Y").mean().alias("Ymean"),
+        pl.col("Z").mean().alias("Zmean"),
+        pl.len().alias("Count")
+    ])
 
-    # Calculation of the voxel relocation
-    voxdata_xyz = np.array(
-        voxdata[["binx", "biny", "binz"]]
-    )  # Here, XYZ-mean could also be used to define the voxel position
-    count_values = voxdata["Count"].values
+    # Block preparation for large dataset processing
+    voxdata_xyz = voxdata.select(["binx", "biny", "binz"]).to_numpy()
+    count_values = voxdata["Count"].to_numpy()
+    ####
+
+    weighted_xyz = voxdata_xyz * count_values[:, None]
+
+    ###
     tree = cKDTree(voxdata_xyz)
+    block_size = 30000  # 30 000 voxels per block
+    num_points = voxdata_xyz.shape[0]
+    num_blocks = num_points // block_size
+    blocks = np.array_split(voxdata_xyz, num_blocks + 1 if num_points % block_size != 0 else num_blocks)
 
-    block_size = 3000  # 3000 voxels block processing
-    num_blocks = voxdata_xyz.shape[0] // block_size
-    leftover = voxdata_xyz.shape[0] % block_size
-    blocks = np.split(voxdata_xyz[:-leftover], num_blocks)
-    if leftover > 0:
-        last_block = voxdata_xyz[-leftover:]
-        blocks.append(last_block)
-    cumul_weightmean = np.empty((0, 3))
-    i = 0
-    utility.timer = datetime.now()
-    n = len(blocks)
-    pbar = tqdm(desc="Generating skeleton", total=n)
-    while i < n:
-        for block in blocks:
-            indices = tree.query_ball_point(block, r=search_radius, workers=7, p=2)
-            weighted_mean = np.array(
-                [
-                    (voxdata_xyz[indice] * count_values[indice][:, None]).sum(axis=0)
-                    / count_values[indice].sum()
-                    for indice in indices
-                ]
-            )
-            cumul_weightmean = np.concatenate((cumul_weightmean, weighted_mean))
-            i = i + 1
-            pbar.update(1)
-
-    utility.calculate_time("queryball by block", reset_timer=True)
-
-    weighted_mean_df = pd.DataFrame(
-        cumul_weightmean,
-        columns=["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"],
+    results = Parallel(n_jobs=8, prefer="threads", batch_size=2)(
+        delayed(process_block)(blk, tree, search_radius, weighted_xyz, count_values)
+        for blk in tqdm(blocks)
     )
-    voxdata[["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"]] = (
-        weighted_mean_df
+    cumul_weightmean = results
+    cumul_weightmean = np.vstack(cumul_weightmean)
+    weighted_mean_df = pl.DataFrame(cumul_weightmean, schema=["X_weighted_mean", "Y_weighted_mean", "Z_weighted_mean"])
+
+
+    voxdata = voxdata.with_columns([
+        weighted_mean_df["X_weighted_mean"],
+        weighted_mean_df["Y_weighted_mean"],
+        weighted_mean_df["Z_weighted_mean"]
+    ])
+
+    # Relocation calculations
+    voxdata = voxdata.with_columns([
+        (pl.col("X_weighted_mean") - pl.col("binx")).alias("diffx"),
+        (pl.col("Y_weighted_mean") - pl.col("biny")).alias("diffy"),
+        (pl.col("Z_weighted_mean") - pl.col("binz")).alias("diffz"),
+    ])
+    voxdata = voxdata.with_columns(
+        (pl.col("diffx") ** 2 + pl.col("diffy") ** 2 + pl.col("diffz") ** 2).sqrt().alias("relocation_dist")
     )
 
-    voxdata["diffx"], voxdata["diffy"], voxdata["diffz"] = (
-        voxdata["X_weighted_mean"] - voxdata["binx"],
-        voxdata["Y_weighted_mean"] - voxdata["biny"],
-        voxdata["Z_weighted_mean"] - voxdata["binz"],
-    )
-    voxdata["relocation_dist"] = np.sqrt(
-        voxdata["diffx"] ** 2 + voxdata["diffy"] ** 2 + voxdata["diffz"] ** 2
-    )
-    voxdata_prob = voxdata[voxdata["relocation_dist"] > max_relocation_dist].copy()
-    voxdata_prob["polar"] = np.arccos(
-        voxdata_prob["diffz"] / voxdata_prob["relocation_dist"]
-    ) * (180 / np.pi)
-    voxdata_prob["azimuth"] = (
-        np.arctan2(voxdata_prob["diffy"], voxdata_prob["diffx"]) * (180 / np.pi)
-    ) % 360
-    voxdata_prob["diffx"] = (
-        max_relocation_dist
-        * np.sin(np.deg2rad(voxdata_prob["polar"]))
-        * np.cos(np.deg2rad(voxdata_prob["azimuth"]))
-    )
-    voxdata_prob["diffy"] = (
-        max_relocation_dist
-        * np.sin(np.deg2rad(voxdata_prob["polar"]))
-        * np.sin(np.deg2rad(voxdata_prob["azimuth"]))
-    )
-    voxdata_prob["diffz"] = max_relocation_dist * np.cos(
-        np.deg2rad(voxdata_prob["polar"])
-    )
-    cols_to_merge = ["VoxelID", "diffx", "diffy", "diffz"]
-    voxdata = voxdata.merge(
-        voxdata_prob[cols_to_merge], how="left", on="VoxelID", suffixes=("", "_A")
-    )
-    cols_to_update = ["diffx", "diffy", "diffz"]
-    for col in cols_to_update:
-        mask = ~voxdata[
-            col + "_A"
-        ].isnull()  # Mask to select only non-NaN values in '_A' columns
-        voxdata[col] = voxdata[col].mask(mask, voxdata[col + "_A"])
+    # Relocation distance limitation
+    voxdata_prob = voxdata.filter(pl.col("relocation_dist") > max_relocation_dist).with_columns([
+        np.degrees(np.arccos(pl.col("diffz") / pl.col("relocation_dist")) * (180 / np.pi)).alias("polar"),
+        (np.degrees(np.arctan2(pl.col("diffy"), pl.col("diffx")) * (180 / np.pi)) % 360).alias("azimuth")
+    ]).with_columns([
+        (max_relocation_dist * np.sin(np.radians(pl.col("polar"))) * np.cos(np.radians(pl.col("azimuth")))).alias(
+            "diffx"),
+        (max_relocation_dist * np.sin(np.radians(pl.col("polar"))) * np.sin(np.radians(pl.col("azimuth")))).alias(
+            "diffy"),
+        (max_relocation_dist * np.cos(np.radians(pl.col("polar")))).alias("diffz")
+    ])
 
-    cols_to_merge = ["VoxelID", "diffx", "diffy", "diffz", "Count"]
-    finaltab = data.merge(voxdata[cols_to_merge], how="left", on="VoxelID")
-    finaltab["newx"], finaltab["newy"], finaltab["newz"], finaltab["new_relative_z"] = (
-        finaltab["X"] + finaltab["diffx"],
-        finaltab["Y"] + finaltab["diffy"],
-        finaltab["Z"] + finaltab["diffz"],
-        finaltab["relative_z"] + finaltab["diffz"],
-    )
-    finaltab = finaltab.rename(
-        columns={"X": "oldX", "Y": "oldY", "Z": "oldZ", "relative_z": "old_relative_z"}
-    )
-    finaltab = finaltab.rename(
-        columns={"newx": "X", "newy": "Y", "newz": "Z", "new_relative_z": "relative_z"}
-    )
-    finaltab.drop(
-        ["binx", "biny", "binz", "VoxelID", "diffx", "diffy", "diffz"],
-        axis=1,
-        inplace=True,
+    del cumul_weightmean, weighted_xyz
+    gc.collect()
+    # Merging recalculated relocation distance
+    voxdata = voxdata.join(
+        voxdata_prob.select(["VoxelID", "diffx", "diffy", "diffz"]),
+        on="VoxelID", how="left", suffix="_A"
     )
 
-    return finaltab
+    for axis in ["x", "y", "z"]:
+        voxdata = voxdata.with_columns([
+            pl.when(pl.col(f"diff{axis}_A").is_not_null())
+            .then(pl.col(f"diff{axis}_A"))
+            .otherwise(pl.col(f"diff{axis}"))
+            .alias(f"diff{axis}")
+        ])
+
+    # Applying relocation to original points
+    finaltab = data.join(
+        voxdata.select(["VoxelID", "diffx", "diffy", "diffz", "Count"]),
+        on="VoxelID", how="left"
+    ).with_columns([
+        (pl.col("X") + pl.col("diffx")).alias("newx"),
+        (pl.col("Y") + pl.col("diffy")).alias("newy"),
+        (pl.col("Z") + pl.col("diffz")).alias("newz"),
+        (pl.col("relative_z") + pl.col("diffz")).alias("new_relative_z")
+    ])
+
+    finaltab = finaltab.rename({
+        "X": "oldX", "Y": "oldY", "Z": "oldZ", "relative_z": "old_relative_z",
+        "newx": "X", "newy": "Y", "newz": "Z", "new_relative_z": "relative_z"
+    })
+
+    return finaltab.drop(["binx", "biny", "binz", "VoxelID", "diffx", "diffy", "diffz"])
+
+
+def process_block(block, tree, search_radius, weighted_xyz, count_values):
+    indices = tree.query_ball_point(block, r=search_radius, p=2)
+    block_weighted_mean = np.array([
+       (weighted_xyz[idx]).sum(axis=0) / count_values[idx].sum()
+       if len(idx) > 0 else np.zeros(weighted_xyz.shape[1])
+       for idx in indices
+    ])
+
+    return block_weighted_mean
+
