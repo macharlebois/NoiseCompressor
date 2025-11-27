@@ -19,6 +19,7 @@ import easygui
 import numpy as np
 import os
 import pandas as pd
+import polars as pl
 from pointcloud import (
     reader as reader,
     writer as writer,
@@ -32,108 +33,115 @@ from pointcloud.utility import (
     select_threshold,
     search_file,
     set_parameters,
+    colored,
 )
 
 
-def compress_cloud(cloud, skeleton, param, threshold):
+def compress_cloud(cloud: pl.DataFrame, skeleton: pl.DataFrame, param: dict, threshold: str) -> pl.DataFrame:
     """This function compresses a point cloud according to a set of optimized parameters.
-    Parameters:
-        cloud (DataFrame): The point cloud to compress.
-        skeleton (DataFrame): The skeleton associated with the point cloud.
-        param (dict): The optimized parameters for the compression.
-        threshold (str): The threshold used for compression.
-    Returns:
-        DataFrame: The compressed point cloud.
-    """
+        Parameters:
+            cloud (DataFrame): The point cloud to compress.
+            skeleton (DataFrame): The skeleton associated with the point cloud.
+            param (dict): The optimized parameters for the compression.
+            threshold (str): The threshold used for compression.
+        Returns:
+            DataFrame: The compressed point cloud.
+        """
+    if isinstance(cloud, pd.DataFrame):
+        cloud = pl.from_pandas(cloud)
+    if isinstance(skeleton, pd.DataFrame):
+        skeleton = pl.from_pandas(skeleton)
     if skeleton is None:
         error_message = "The skeleton is mandatory for compression"
         raise KeyError(error_message)
 
-    skeleton.rename(
-        columns={
-            "line_id": "line_id_skeleton",
-            "X": "X_skeleton",
-            "Y": "Y_skeleton",
-            "Z": "Z_skeleton",
-        },
-        inplace=True,
-    )
+    skeleton = skeleton.rename({
+        "line_id": "line_id_skeleton",
+        "X": "X_skeleton",
+        "Y": "Y_skeleton",
+        "Z": "Z_skeleton"
+    })
     cols_to_merge = ["line_id_skeleton", "X_skeleton", "Y_skeleton", "Z_skeleton"]
 
     # 1-SKELETON ASSOCIATION
     # Associating the position of each point with its position in the skeleton
-    cloud2 = cloud.merge(
-        skeleton[cols_to_merge], left_on=["line_id"], right_on=["line_id_skeleton"]
-    )
+    cloud = cloud.join(skeleton.select(cols_to_merge), left_on="line_id", right_on="line_id_skeleton", how="inner")
 
     # 2-MAXIMAL RELOCATION (r) CALCULATION
     # Calculating spherical coordinates and distance (r) between the point
     # and its clone in the skeleton
-    cloud3 = locator.convert2spherical(
-        cloud2,
+    cloud = cloud.to_pandas()
+    cloud = locator.convert2spherical(
+        cloud,
         dimension1=["X", "Y", "Z"],
-        dimension2=["X_skeleton", "Y_skeleton", "Z_skeleton"],
+        dimension2=["X_skeleton", "Y_skeleton", "Z_skeleton"]
     )
+    cloud = pl.from_pandas(cloud)
 
     # 3-POINT RELOCATION DISTANCE
-    # Calculating the relocation distance of each point:
+    # Calculating the relocation distance (= m1 * r² + m2 * r + b) of each point:
     #   -according to the equation parameters defined by the optimizer
     #   -based on the distance (r) between the point and its clone in the skeleton
     #   -based on the selected threshold
 
     if threshold == "Skeleton index":
-        cloud3["relocation_dist"] = (
-            param["m1"] * cloud3["r"] ** 2 + param["m2"] * cloud3["r"] + param["b"]
+        cloud = cloud.with_columns(
+            (param["m1"] * pl.col("r")**2 + param["m2"] * pl.col("r") + param["b"]).alias("relocation_dist")
         )
         # Condition for relocation not to exceed distance 'r'
-        cloud3["relocation_dist"] = np.where(
-            cloud3["relocation_dist"] > cloud3["r"],
-            cloud3["r"],
-            cloud3["relocation_dist"],
+        cloud = cloud.with_columns(
+            pl.when(pl.col("relocation_dist") > pl.col("r"))
+            .then(pl.col("r"))
+            .otherwise(pl.col("relocation_dist"))
+            .alias("relocation_dist")
         )
         # Retain only points below the SI_threshold
-        cloud3 = cloud3[cloud3["r"] <= param["SI_threshold"]]
+        cloud = cloud.filter(pl.col("r") <= param["SI_threshold"])
+
     else:
-        mask = cloud3["1st_neighbor_dist"] > param["FI_threshold"]
-        cloud3.loc[mask, "relocation_dist"] = cloud3.loc[mask, "r"]
-        cloud3.loc[~mask, "relocation_dist"] = (
-            param["m1"] * cloud3.loc[~mask, "r"] ** 2
-            + param["m2"] * cloud3.loc[~mask, "r"]
-            + param["b"]
-        )
+        # If 1st_neighbor_dist > FI_threshold → relocation_dist = r
+        mask = pl.col("1st_neighbor_dist") > param["FI_threshold"]
+        part1 = pl.when(mask).then(pl.col("r"))
+        part2 = pl.when(~mask).then(param["m1"] * pl.col("r")**2 + param["m2"] * pl.col("r") + param["b"])
+        cloud = cloud.with_columns((part1.otherwise(part2)).alias("relocation_dist"))
         # Condition for relocation not to exceed distance 'r'
-        cloud3["relocation_dist"] = np.where(
-            cloud3["relocation_dist"] > cloud3["r"],
-            cloud3["r"],
-            cloud3["relocation_dist"],
+        cloud = cloud.with_columns(
+            pl.when(pl.col("relocation_dist") > pl.col("r"))
+            .then(pl.col("r"))
+            .otherwise(pl.col("relocation_dist"))
+            .alias("relocation_dist")
         )
 
     # 4-POINT RELOCATION POSITION
     # Calculating x, y and z relocation for each point
-    cloud4 = locator.convert2cartesian(
-        cloud3.copy(),
-        cloud3["relocation_dist"],
+    cloud = cloud.to_pandas()
+    cloud = locator.convert2cartesian(
+        cloud.copy(),
+        cloud["relocation_dist"],
         nm_x="diff_X",
         nm_y="diff_Y",
         nm_z="diff_Z",
         nm_polar="polar",
         nm_azimuth="azimuth",
     )
-    # Calculating each point's final coordinates according to its relocation
-    cloud4[["X", "Y", "Z"]] += np.array(
-        [cloud4["diff_X"], cloud4["diff_Y"], cloud4["diff_Z"]]
-    ).T
+    cloud = pl.from_pandas(cloud)
 
-    return cloud4
+    # Calculating each point's final coordinates according to its relocation
+    cloud = cloud.with_columns([
+        (pl.col("X") + pl.col("diff_X")).alias("X"),
+        (pl.col("Y") + pl.col("diff_Y")).alias("Y"),
+        (pl.col("Z") + pl.col("diff_Z")).alias("Z"),
+    ])
+    return cloud
+
 
 
 if __name__ == "__main__":
-
     # 1-SELECT THRESHOLD
     threshold = select_threshold(utilisation="compressor")
     if threshold is None:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
 
     # 2-CHOOSE WORKING DIRECTORY
@@ -143,8 +151,8 @@ if __name__ == "__main__":
         msg="Select the directory containing the original point cloud file",
     )
     if work_directory is None:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     os.chdir(work_directory)
 
@@ -153,16 +161,20 @@ if __name__ == "__main__":
         title="SELECT INPUT FILE",
         msg="Select the original point cloud file (*.ply) you wish to compress",
     )
+
     if cloud_file is None:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     if cloud_file.endswith(".ply"):
+        print(" ")
+        print(colored("Reading point cloud..."))
         orig_cloud = reader.read_ply(cloud_file)
+        print("Point cloud successfully loaded.")
         orig_cloud = valid.validate_columns(orig_cloud, threshold)
         if orig_cloud is None:
-            print("##############################################")
-            print("Process canceled by user.")
+            print(" ")
+            print(colored("Process canceled by user...", 'red'))
             exit()
     else:
         errmsg = "This file format is not supported. Please use a *.ply file."
@@ -173,31 +185,16 @@ if __name__ == "__main__":
     # Generate a skeleton (or use an existing one)
     generate_skeleton = search_file("skeleton")
     if generate_skeleton is None:
-        print("##############################################")
-        print("Process canceled by user. Please try again.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
     elif generate_skeleton == "Yes":
         # Set skeletonization parameters
-        param_sk = dict()
-        try:
-            (
-                param_sk["voxel_size"],
-                param_sk["search_radius"],
-                param_sk["max_relocation_dist"],
-            ) = set_parameters(usage="skeleton")
-            print("##############################################")
-            print("The skeleton parameters have been defined as :")
-            print("voxel_size =", param_sk["voxel_size"])
-            print("search_radius =", param_sk["search_radius"])
-            print("max_relocation_dist =", param_sk["max_relocation_dist"])
-        except ValueError:
-            print("##############################################")
-            print(
-                "The skeletonization process could not be completed "
-                "without the required parameters."
-            )
-            print("Please try again.")
-            exit()
+        param_sk = {
+            "voxel_size": 0.01,
+            "search_radius": 0.1,
+            "max_relocation_dist": 0.21,
+        }
         # Skeleton file save as *.csv
         default_skfile = os.path.basename(cloud_file).split(".")[0] + "_skeleton.csv"
         skeleton_file = easygui.filesavebox(
@@ -225,18 +222,16 @@ if __name__ == "__main__":
                 param_comp["b"],
                 param_comp["SI_threshold"],
             ) = set_parameters(usage="compression", threshold=threshold)
-            print("##############################################")
+            print(" ")
             print("The compression parameters have been defined as :")
             print("m1 =", param_comp["m1"])
             print("m2 =", param_comp["m2"])
             print("b =", param_comp["b"])
             print("SI_threshold =", param_comp["SI_threshold"])
         except KeyError:
-            print("##############################################")
-            print(
-                "The compression process could not be completed without "
-                "the required parameters."
-            )
+            print(" ")
+            print(colored("The compression process could not be completed without the required parameters.", 'red'))
+            print("Please try again.")
             print("Please try again.")
             exit()
     else:
@@ -247,18 +242,15 @@ if __name__ == "__main__":
                 param_comp["b"],
                 param_comp["FI_threshold"],
             ) = set_parameters(usage="compression", threshold=threshold)
-            print("##############################################")
+            print(" ")
             print("The compression parameters have been defined as :")
             print("m1 =", param_comp["m1"])
             print("m2 =", param_comp["m2"])
             print("b =", param_comp["b"])
             print("FI_threshold =", param_comp["FI_threshold"])
         except KeyError:
-            print("##############################################")
-            print(
-                "The compression process could not be completed without "
-                "the required parameters."
-            )
+            print(" ")
+            print(colored("The compression process could not be completed without the required parameters.", 'red'))
             print("Please try again.")
             exit()
 
@@ -278,25 +270,26 @@ if __name__ == "__main__":
         cloud_data = valid.validate_data(orig_cloud, "compressor", threshold)
     else:
         if "1st_neighbor_dist" not in orig_cloud.columns:
-            cloud_data1 = valid.validate_data(
+            cloud_data = valid.validate_data(
                 orig_cloud, "point_indexation", threshold
             )
-            cloud_data2 = fraternity_indexer.arc_separator(cloud_data1)
-            cloud_data3 = cloud_data2.replace(
+            cloud_data = pl.from_pandas(cloud_data)
+            print(" ")
+            print(colored("Calculating Fraternity index..."))
+            cloud_data = fraternity_indexer.arc_separator(cloud_data)
+            cloud_data = cloud_data.to_pandas()
+            cloud_data = cloud_data.replace(
                 [np.inf, -np.inf], 5
             )  # Points with no "brother" are given a FI of 5
-            cloud_data = valid.validate_data(cloud_data3, "compressor", threshold)
+            print("Fraternity index calculation " + colored("completed", "C14") + ".")
+            cloud_data = valid.validate_data(cloud_data, "compressor", threshold)
         else:
             cloud_data = valid.validate_data(orig_cloud, "compressor", threshold)
 
-    print("##############################################")
-    print("Working on point indexation...")
-    print(
-        "Point indexation successfully processed with the %s threshold." % threshold
-    )
-
     # 4-SKELETONIZATION
     if generate_skeleton == "No":
+        print(" ")
+        print(colored("Importing skeleton..."))
         skeleton_data = reader.read_csv(skeleton_file, ",")
         # VALIDATION to ensure that all skeleton lines match the cloud lines
         data, cloud_data = valid.validate_data(cloud_data, "skeleton")
@@ -320,35 +313,44 @@ if __name__ == "__main__":
                 how="left",
             )
         # GENERATE SKELETON
-        print("##############################################")
-        print("Generating skeleton...")
-        print("This may take a few minutes. Please wait.")
+        print(" ")
+        print(colored("Generating skeleton..."))
+        print("This may take a moment. Please wait.")
+        cloud_data = pl.from_pandas(cloud_data)
         skeleton = skeletonizer.generate_skeleton(cloud_data, param_sk)
+        skeleton = skeleton.to_pandas()
 
         # ADD missing columns to the skeleton file
         cols_to_add = [col for col in data.columns if col not in skeleton.columns or col == "line_id"]
         skeleton_data = pd.merge(data[cols_to_add], skeleton, on="line_id", how="left")
         writer.write_csv(skeleton_file, skeleton_data)
         print(" ")
-        print("Skeletonization completed successfully.")
+        print("Skeletonization completed" + colored("successfully", "C14") + ".")
     else:
-        print("##############################################")
-        print("Process canceled by user.")
+        print(" ")
+        print(colored("Process canceled by user...", 'red'))
         exit()
 
     # 5-COMPRESS POINT CLOUD
-    print("##############################################")
-    print("Point cloud compression in progress...")
+    print(" ")
+    print(colored("Working on point cloud compression..."))
+
+    skeleton_data = pl.from_pandas(skeleton_data)
+    if isinstance(cloud_data, pd.DataFrame):
+        cloud_data = pl.from_pandas(cloud_data)
+
     result = compress_cloud(cloud_data, skeleton_data, param_comp, threshold)
+
+    result = result.to_pandas()
 
     # ADD missing columns to the compressed file
     cols_to_add = [col for col in data.columns if col not in result.columns or col == "line_id"]
     result_data = pd.merge(result, data[cols_to_add], on="line_id", how="left")
 
     # Save compressed cloud
+    print(" ")
+    print(colored("Saving results..."))
     writer.write_ply(compressed_file, result_data)
 
-    print("##############################################")
-    print(
-        "The point cloud was successfully compress with the %s threshold." % threshold
-    )
+    print(" ")
+    print("Compression with '%s threshold': " % threshold + colored("COMPLETED", 'C14'))
