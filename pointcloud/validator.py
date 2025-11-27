@@ -11,7 +11,6 @@ This file can be imported as a module and contains the following functions:
 * validate_data - validates data according to their intended use
 """
 
-import easygui
 import json
 import os
 import pandas as pd
@@ -154,7 +153,7 @@ def validate_columns(data, method):
 
 def validate_data(data, usage, threshold=None):
     """This function validates data according to its intended use :
-    skeleton, point_indexation, compressor, optimizer
+    skeleton, point_indexation, compressor
     :param data: pandas dataframe
     :param usage: str, usage type
     :param threshold: str, threshold type
@@ -223,42 +222,5 @@ def validate_data(data, usage, threshold=None):
                 raise ValueError(
                     "The '%s' column could not be found in the point cloud." % column
                 )
-
-        return data
-
-    elif usage == "optimizer":
-        errmsg = ""
-        title = "AN ERROR OCCURRED"
-        ok_btn = "OK"
-        if threshold == "Fraternity index":
-            threshold_limits = data.loc[data["Parameter"] == "FI_threshold"]
-        else:
-            threshold_limits = data.loc[data["Parameter"] == "SI_threshold"]
-
-        if data.isnull().values.any() or (
-            data.astype(str).applymap(lambda x: x.strip() == "").values.any()
-        ):
-            errmsg += (
-                "VALUE ERROR - Limits are missing."
-                "\n\nPlease make sure all limits are defined in the 'param_limits.xlsx' file."
-            )
-            easygui.msgbox(errmsg, title, ok_btn)
-            return None
-        for index, row in data.iterrows():
-            if row["Max"] < row["Min"]:
-                errmsg += (
-                    "VALUE ERROR - The upper limit must be greater than the lower limit."
-                    "\n\nPlease correct the 'param_limits.xlsx' file and try again."
-                )
-                easygui.msgbox(errmsg, title, ok_btn)
-                return None
-        for index, row in threshold_limits.iterrows():
-            if row["Max"] < 0 or row["Min"] < 0:
-                errmsg += (
-                    "VALUE ERROR - The threshold limits must be positive."
-                    "\n\nPlease correct the 'param_limits.xlsx' file and try again."
-                )
-                easygui.msgbox(errmsg, title, ok_btn)
-                return None
 
         return data

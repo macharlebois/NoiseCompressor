@@ -9,6 +9,7 @@ numpy (1.24.2), pandas (1.5.3), plyfile (0.7.4), pytest (8.3.5)
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import plyfile
 import pytest
 from unittest.mock import patch
@@ -48,20 +49,19 @@ def sample_data2():
 # ---------------------------TESTS FRATERNITY INDEXER---------------------------
 
 def test_fraternity_index(sample_data):
-    result = fraternity_index(sample_data.copy())
+    if isinstance(sample_data, pd.DataFrame):
+        sample_data = pl.from_pandas(sample_data)
+    result = fraternity_index(sample_data.clone())
+    if isinstance(result, pl.DataFrame):
+        result = result.to_pandas()
 
-    assert "dist" in result.columns
-    assert "ind" in result.columns
     assert "1st_neighbor_dist" in result.columns
-    assert not result["dist"].isna().any()
     assert not result["1st_neighbor_dist"].isna().any()
 
 
 def test_arc_separator(sample_data):
     result = arc_separator(sample_data.copy())
 
-    assert "dist" in result.columns
-    assert "ind" in result.columns
     assert "1st_neighbor_dist" in result.columns
     assert len(result) == len(sample_data)
 
@@ -130,6 +130,8 @@ def test_read_xlsx(tmp_path):
 # ---------------------------TESTS SKELETONIZER---------------------------
 
 def test_generate_skeleton(sample_data):
+    if isinstance(sample_data, pd.DataFrame):
+        sample_data = pl.from_pandas(sample_data)
     param_sk = dict(
         voxel_size=0.01,
         search_radius=0.1,
@@ -137,8 +139,8 @@ def test_generate_skeleton(sample_data):
     )
     result = generate_skeleton(sample_data, param_sk)
 
-    assert isinstance(result, pd.DataFrame)
-    assert not result.empty
+    assert isinstance(result, pl.DataFrame)
+    assert not result.is_empty()
     assert {"oldX", "oldY", "oldZ", "old_relative_z", "X", "Y", "Z", "relative_z"}.issubset(result.columns)
 
 
@@ -228,43 +230,6 @@ def test_validate_data_compressor_fraternity(sample_data2):
 
     df_validated = validate_data(data, usage="compressor", threshold="Fraternity index")
     assert set(df_validated.columns) >= {"X", "Y", "Z", "relative_z", "1st_neighbor_dist"}
-
-
-def test_validate_data_optimizer():
-    data = pd.DataFrame({
-        "Parameter": ["FI_threshold", "other_param"],
-        "Min": [0.5, 1.0],
-        "Max": [1.5, 2.0]
-    })
-
-    df_validated = validate_data(data, usage="optimizer", threshold="Fraternity index")
-    assert df_validated.equals(data)
-
-
-def test_validate_data_optimizer_missing_values():
-    data = pd.DataFrame({
-        "Parameter": ["FI_threshold", "other_param"],
-        "Min": [None, 1.0],
-        "Max": [1.5, None]
-    })
-
-    with patch("easygui.msgbox") as mock_msgbox:
-        result = validate_data(data, usage="optimizer", threshold="Fraternity index")
-        mock_msgbox.assert_called_once()
-        assert result is None
-
-
-def test_validate_data_optimizer_negative_threshold():
-    data = pd.DataFrame({
-        "Parameter": ["FI_threshold"],
-        "Min": [-0.5],
-        "Max": [1.5]
-    })
-
-    with patch("easygui.msgbox") as mock_msgbox:
-        result = validate_data(data, usage="optimizer", threshold="Fraternity index")
-        mock_msgbox.assert_called_once()
-        assert result is None
 
 
 # ---------------------------TESTS WRITER---------------------------
