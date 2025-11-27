@@ -99,7 +99,7 @@ However, the __skeletonization__ step is integrated into the __parameterization_
 so it is not presented as a distinct running script in the following.
 
 ### ✨ Try the demo!
-Please check the [demo files](https://github.com/macharlebois/NoiseCompressor/demo) to help you get 
+Please check the [demo files](demo) to help you get 
 started quickly. 
 <details>
 <summary><i>More details</i></summary>
