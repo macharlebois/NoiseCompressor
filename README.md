@@ -94,13 +94,11 @@ However, the __skeletonization__ step is integrated into the __parameterization_
 so it is not presented as a distinct running script in the following.
 
 ### ✨ Try the demo!
-Please check the [demo files](demo) to help you get 
-started quickly. 
+Please refer to the demo files to help you get started quickly. Since both demo scripts 
+([`demo_step1_OPTIMIZER.py`](demo_step1_OPTIMIZER.py) and [`demo_step2_COMPRESSOR.py`](demo_step2_COMPRESSOR.py)) 
+contain their own sample data, no data download is necessary. 
 <details>
 <summary><i>More details</i></summary>
-
-Both `demo_step1_OPTIMIZER.py` and `demo_step2_COMPRESSOR.py` scripts include their own sample data 
-(no data download required). 
 
 __Simply run the demo script you wish to try!__
 - ___Parameterization demo___ :
