@@ -97,7 +97,7 @@ if __name__ == "__main__":
         exit()
 
     # Output file save as *.ply
-    compressed_file = work_directory + '\\' + 'demo_compressed.csv'
+    compressed_file = work_directory + '\\' + 'demo_compressed.ply'
 
     # Cloud data validation and identification depending on the compression threshold
     cloud_data = valid.validate_data(orig_cloud, "compressor", threshold)
