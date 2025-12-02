@@ -142,7 +142,7 @@ if __name__ == "__main__":
         data, ref_data = valid.validate_data(ref_data, "skeleton")
         print(" ")
         print(colored("Generating skeleton..."))
-        print("This may take a moment. Please wait.")
+        print("This may take a moment (up to 20 minutes). Please wait.")
         param_sk = {
             "voxel_size": 0.01,
             "search_radius": 0.1,

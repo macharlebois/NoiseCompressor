@@ -50,24 +50,19 @@ a new virtual environment ([Anaconda](https://www.anaconda.com/) is what we reco
    conda activate myenv
    ```
    
-#### Alternatively, using [`venv`](https://docs.python.org/3/library/venv.html) (if you don't use Anaconda):
-1. Run the following command, replacing `'myenv'` with your preferred environment name:
-   ```bash
-   python -m venv myenv
-   ```
-2. Activate the environment:
-   * **Windows**:
-     ```bash
-     myenv\Scripts\activate
-     ```
-   * **Mac/Linux**:
-     ```bash
-     source myenv/bin/activate
-     ```
+
 </details>
 
 ### 2️⃣ Clone the NoiseCompressor Repository
-Ensure `git` is installed, then run:
+Ensure `git` is installed:
+```bash
+git --version
+```
+
+If `git` is not installed, download and install it from [here](https://git-scm.com/downloads).
+
+Then, clone the repository and navigate into the project directory:
+
 ```bash
 git clone https://github.com/macharlebois/NoiseCompressor.git
 cd NoiseCompressor
@@ -86,11 +81,11 @@ pytest
 ```
 
 ### ✅ Ready to Use!
-
+<!-- 
 🔎 Alternatively, executable files are available for download _(Windows version only)_:
 * [`step1_OPTIMIZER.exe`](https://github.com/macharlebois/NoiseCompressor/releases)
 * [`step2_COMPRESSOR.exe`](https://github.com/macharlebois/NoiseCompressor/releases)
-
+-->
 <br>
 
 # How to use
@@ -104,13 +99,13 @@ started quickly.
 <details>
 <summary><i>More details</i></summary>
 
-Both `step1_OPTIMIZER_demo.py` and `step2_COMPRESSOR_demo.py` scripts include their own sample data 
+Both `demo_step1_OPTIMIZER.py` and `demo_step2_COMPRESSOR.py` scripts include their own sample data 
 (no data download required). 
 
 __Simply run the demo script you wish to try!__
 - ___Parameterization demo___ :
    ```bash
-   python step1_OPTIMIZER_demo.py
+   python demo_step1_OPTIMIZER.py
    ```
   This script demonstrates the parameterization process (using the same 30 stems presented in our [related paper](#related-paper)).
 <p align="center">
@@ -119,7 +114,7 @@ __Simply run the demo script you wish to try!__
   
 - ___Compression demo___ :
    ```bash
-   python step2_COMPRESSOR_demo.py
+   python demo_step2_COMPRESSOR.py
    ```
   This script demonstrates the compression process on a single example stem (true DBH = 28cm).
 <p align="center">
