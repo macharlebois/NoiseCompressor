@@ -154,7 +154,7 @@ def set_parameters(usage="compression", threshold="Fraternity index"):
             default_list = [0.00, 0.74, 0.00, 0.186]
         else:
             input_list = [" m1", " m2", " b", " SI_threshold"]
-            default_list = [0.00, 0.74, 0.00, 0.306]
+            default_list = [0.00, 0.74, 0.00, 0.062]
 
     output = easygui.multenterbox(text, title, input_list, default_list)
 

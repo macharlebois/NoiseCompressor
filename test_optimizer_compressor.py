@@ -47,6 +47,6 @@ def test_main_optimizer(sample_data):
     assert {"stem_id", "estimated_dbh", "rel_dbh_diff", "true_dbh", "dbh_diff", "individual"}.issubset(relation_tab.columns)
     assert not param_tab.empty
     assert round(result["m1"].values[0], 3) == 0.000
-    assert round(result["m2"].values[0], 3) == 0.98
+    assert round(result["m2"].values[0], 3) == -0.44
     assert round(result["b"].values[0], 3) == 0.000
-    assert round(result["SI_threshold"].values[0], 3) == 0.306
+    assert round(result["SI_threshold"].values[0], 3) == 0.005

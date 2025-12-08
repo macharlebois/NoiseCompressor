@@ -201,7 +201,7 @@ and _Faro Orbis_. Optimized parameters and threshold values for these devices ar
 
 | MLS Device         | Threshold        | m1    | m2    | b     | threshold value |
 |--------------------|------------------|-------|-------|-------|-----------------|
-| Velodyne VLP-16    | Skeleton index   | 0.000 | 0.740 | 0.000 | 0.306           |
+| Velodyne VLP-16    | Skeleton index   | 0.000 | 0.740 | 0.000 | 0.062           |
 | Velodyne VLP-16    | Fraternity index | 0.000 | 0.740 | 0.000 | 0.186           |
 | Alpha-Geo Lixel-L2 | Skeleton index   | 0.000 | 0.480 | 0.000 | 0.045           |
 | ZEB Horizon RT     | Skeleton index   | 0.000 | 0.480 | 0.000 | 0.081           |
