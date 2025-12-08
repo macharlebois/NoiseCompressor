@@ -35,6 +35,7 @@ from datetime import datetime
 from deap import creator, base, tools, algorithms
 import easygui
 from functools import partial
+import gc
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
@@ -53,6 +54,7 @@ from pointcloud import (
     validator as valid,
     skeletonizer as skeletonizer,
     fraternity_indexer as fraternity_indexer,
+    locator as locator,
 )
 import random
 import step2_COMPRESSOR as Compressor
@@ -261,6 +263,16 @@ def main_optimizer(true_dbh, ref_data, skeleton_data, p_limits, threshold):
     creator.create("FitnessMax", base.Fitness, weights=(-1.0,))
     # Creating Individual class
     creator.create("Individual", array.array, typecode="f", fitness=creator.FitnessMax)
+
+    if threshold == "Skeleton index":
+        max_r_data = skeleton_data[["oldX", "oldY", "oldZ", "X", "Y", "Z"]].copy()
+        max_r_data = locator.convert2spherical(max_r_data, dimension1=["oldX", "oldY", "oldZ"], dimension2=["X", "Y", "Z"])
+        max_r = max_r_data["r"].max()
+
+        p_limits.loc[p_limits["Parameter"] == "SI_threshold", "Max"] = round(max_r, 4)
+
+        del max_r_data
+        gc.collect()
 
     toolbox = base.Toolbox()
     toolbox.register("individual", generate_individual, p_limits)
