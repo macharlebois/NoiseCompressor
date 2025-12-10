@@ -308,3 +308,49 @@ While running the ___step1_OPTIMIZER.py___ script:
 ## Related paper
 More information about this method can be found in the following article :
 _Available soon_
+
+<details>
+<summary><i>Fraternity index details</i></summary>  
+
+The __Fraternity Index (FI)__ is an alternative threshold that can be used (instead of the Skeleton Index) to achieve final 
+compression. Since both thresholds differ very slightly in their functionalities and level of accuracy, only the skeleton 
+index is discussed in the related paper. Therefore, details regarding the FI are provided here for reference. 
+
+__Fraternity index calculation__
+
+Compared to the skeleton index, the fraternity index better compresses noise associated to small diameter stems by 
+allowing a point separation based on its arc association in the point cloud. The fraternity index estimates the expected 
+distance between two points on the same arc according to their distance from the sensor as they were captured. 
+
+The following figure illustrates examples of fraternity index calculation for a point (_i_) based on the distance (_D_) 
+to its closest neighbour (_j_) in the group (by frame number and polar angles, which are delimited by the dashed lines),
+on (A) a larger stem, (B) a smaller stem, and (C) an outlier.
+
+<p align="center">
+<img src="infographics/fraternity_index_calculation.png" width="600">
+</p>
+
+First, all points are grouped by frame numbers and polar angle. Then, the distance to its closest neighbour (_j_) in the
+group is calculated for each point (_i_). This distance is then put in relation with the point’s distance to the sensor 
+(at the time of capture) using the following equation:
+
+$$ FI_i = {Distance_{i-j} \over Distance_{i-sensor}} $$
+
+Points belonging to the same arc are considered to be part of the same stem and can therefore be assigned a fraternity 
+index (FI). Points with no neighbour in a group are most likely to be associated with smaller diameters or identified as 
+an outlier and are automatically attributed the maximal value (i.e., FImax = 5). Ultimately, the FI helps distinguish
+points associated with smaller stems and acts as a threshold during final compression. Since the FI threshold requires 
+knowing associated frame number for each point in the cloud, the choice of thresholds depends on the availability of 
+required data.
+
+Differently from the SI-threshold, the FI-threshold allows greater compression on points with a fraternity index above 
+its optimized value (see _Box 1_ from related paper for details on optimization). Therefore, if the point's FI-value is 
+greater than the threshold, the maximal relocation distance is used as _RDi_ (_RDi_ = _ri_). Otherwise, the point is 
+relocated according to _pRDi_ (_RDi_ = _pRDi_). This slightly refines the compression of smaller diameter stems by 
+further compressing their related points but does not significantly improve the accuracy in comparison with the SI-threshold.
+
+<p align="center">
+<img src="infographics/final_compression_workflow.png" width="400">
+</p>
+
+</details>
