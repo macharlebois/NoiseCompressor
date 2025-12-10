@@ -93,6 +93,12 @@ As you can see on the [general workflow](#general-workflow), this method is divi
 However, the __skeletonization__ step is integrated into the __parameterization__ and __compression__ steps, 
 so it is not presented as a distinct running script in the following.
 
+> [!TIP] 
+> We have listed [common bugs and issues](#common-bugs-and-issues) that may arise during installation or 
+> execution of the program. Please report any problems you have encountered while running the code.
+
+
+
 ### ✨ Try the demo!
 Please refer to the demo files to help you get started quickly. Since both demo scripts 
 ([`demo_step1_OPTIMIZER.py`](demo_step1_OPTIMIZER.py) and [`demo_step2_COMPRESSOR.py`](demo_step2_COMPRESSOR.py)) 
@@ -129,10 +135,10 @@ by a same device and under similar conditions could be effectively compressed wi
 Therefore, a single parameterization could be sufficient to increase the algorithm's efficiency. 
 
 > [!NOTE]  
->To this day, we have been able to calibrate four (4) different MLS devices, including _Velodyne VLP-16_, _Alpha-Geo 
->Lixel-L2_, _ZEB Horizon RT_, and _Faro Orbis_ (see _Available Calibrations_ section below for details).
->If you are using one of these devices, you can directly proceed to the __STEP 2 : COMPRESSION__ and use the 
->corresponding parameters.
+> To this day, we have been able to calibrate four (4) different MLS devices, including _Velodyne VLP-16_, _Alpha-Geo 
+> Lixel-L2_, _ZEB Horizon RT_, and _Faro Orbis_ (see _Available Calibrations_ section below for details).
+> If you are using one of these devices, you can directly proceed to the __STEP 2 : COMPRESSION__ and use the 
+> corresponding parameters.
 
 <details>
 <summary><b>Proceeding to parameterization</b></summary>
@@ -250,6 +256,54 @@ _** = SI or FI (depending on the selected threshold)_
 
 </details>
 <br>
+
+## Common bugs and issues
+Here are some common issues that may arise during installation or execution of the program, along with their solutions.
+<details>
+<summary><b>See more</b></summary>
+
+- __Issue__: `This file format is not supported.`  
+  __Solution__: Ensure that your input files are in the correct format (`*.ply` for point clouds, `*.xlsx` for stem information, and `*.csv` for skeleton). If using `*.csv` files, make sure they are UTF-8 encoded, with comma separators.
+
+
+- __Issue__: `ModuleNotFoundError`  
+  __Solution__: Ensure that all [dependencies](requirements.txt) are installed in your virtual environment. Also make sure that you have activated the correct virtual environment before running the scripts.
+  ```bash
+  You can activate it using:
+  ```bash
+  conda activate myenv
+  ```
+  Replace `myenv` with the name of your virtual environment.
+
+
+- __Issue__: `MemoryAllocationError`
+  __Solution__: This error may occur when processing large point clouds that exceed your system's memory capacity (requires RAM 16GB or more). To resolve this, consider downsampling your point cloud (by removing unnecessary fields, for example) before processing, or increasing your system's available memory.
+
+
+- __Issue__: `The 'relative_z' column could not be found in the point cloud.`
+  __Solution__: The relative height (`relative_z`) is required for processing. Ensure that your point cloud contains this column. If not, you may need to compute it based on the absolute Z values and the ground level.
+
+
+While running the ___step1_OPTIMIZER.py___ script:
+
+- __Issue__: `FileNotFound`
+  __Solution__: Double-check that the input files are correctly formatted and organized as specified in the [parameterization](#proceeding-to-parameterization) section.
+
+
+- __Issue__: Incorrect output or unexpected DBH results
+  __Solution__: There are several potential causes for this issue. Here are some common ones to check: 
+  - Verify that the true DBH values in the _stem information file_ are in meters.
+  - Ensure that all individual stems are in a vertical position. You may need to rotate the stems accordingly (this can be done in _CloudCompare_ using the [_Rotate/Translate_](https://www.cloudcompare.org/doc/wiki/index.php/Interactive_Transformation_Tool) tool).
+  - Make sure that the individual stems have no branches between 1.20 and 1.50 m above the ground. Otherwise, you need to adjust the segmentation.
+
+
+- __Issue__: `ERROR WARNING: DBH estimation failed for stem 'stem_id' due to invalid data (NO POINTS FOUND AT DBH HEIGHT)`
+  __Solution__: If you get this warning for every stem, it means that the program could not find any points at the DBH height (Z = 1.3m) in your individual stem files and that the optimization could not be performed, correctly. To fix this, please ensure that:
+  - the individual stem files contain points at the DBH height (Z = 1.3m). If not, you may need to select other stems.
+  - the individual stems are all positioned at the same height relative to each other (their base should be at Z = 0m). If not, you need to adjust the segmentation or relocate the stems accordingly (this can be done in _CloudCompare_ using the [_Apply Transformation_](https://www.cloudcompare.org/doc/wiki/index.php/Apply_Transformation) tool).
+
+
+</details>
 
 ## Related paper
 More information about this method can be found in the following article :
