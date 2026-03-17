@@ -308,7 +308,9 @@ While running the ___step1_OPTIMIZER.py___ script:
 
 ## Related paper
 More information about this method can be found in the following article :
-_Available soon_
+
+Charlebois, M.-E., Rochon, P., & Nolet, P. (2026). A novel approach for distinguishing noise and information in forest MLS-point clouds. _Methods in Ecology and Evolution_, 00, 1–11. https://doi.org/10.1111/2041-210x.70280
+
 
 <details>
 <summary><i>Fraternity index details</i></summary>  
